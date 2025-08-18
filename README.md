@@ -5,7 +5,9 @@
     + function
         + normal
         + return channel
+        + when no states is required (pure functional)
     + class/struct
+        + when containing states
     + interface
     + embed/extension
 
