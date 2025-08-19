@@ -6,7 +6,10 @@ import (
 	"strings"
 )
 
-var ls = []byte("\r\n")
+var fieldLineDelimiter = []byte("\r\n")
+var headersDelimiter = []byte("\r\n\r\n")
+
+var ErrMalformedHeaders = fmt.Errorf("headers: malformed headers")
 
 type Headers struct {
 	m map[string]string
@@ -24,6 +27,10 @@ func (h *Headers) Get(key string) string {
 
 func (h *Headers) Set(key, value string) {
 	h.m[strings.ToLower(key)] = value
+}
+
+func (h *Headers) Len() int {
+	return len(h.m)
 }
 
 func isToken(key string) bool {
@@ -46,9 +53,18 @@ func isToken(key string) bool {
 }
 
 func (h Headers) Parse(data []byte) (int, bool, error) {
+	// no header case
+	if bytes.Index(data, fieldLineDelimiter) == 0 {
+		return len(fieldLineDelimiter), true, nil
+	}
+
+	ei := bytes.Index(data, headersDelimiter)
+	if ei == -1 {
+		return 0, false, nil
+	}
 	n := 0
 	for {
-		idx := bytes.Index(data[n:], ls)
+		idx := bytes.Index(data[n:], fieldLineDelimiter)
 		if idx == -1 {
 			return 0, false, nil
 		}
@@ -62,13 +78,13 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 		buf := data[n : n+idx]
 		colonIdx := bytes.Index(buf, []byte(":"))
 		if colonIdx == -1 || (len(buf) >= colonIdx && buf[colonIdx-1] == ' ') {
-			return 0, false, fmt.Errorf("headers: malformed header name")
+			return 0, false, ErrMalformedHeaders
 		}
 
 		fieldName := strings.TrimSpace(string(buf[:colonIdx]))
 		fieldValue := strings.TrimSpace(string(buf[colonIdx+1:]))
 		if !isToken(fieldName) {
-			return 0, false, fmt.Errorf("headers: malformed header name")
+			return 0, false, ErrMalformedHeaders
 		}
 
 		val := h.Get(fieldName)
@@ -78,8 +94,8 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			h.Set(fieldName, fieldValue)
 		}
 
-		n += idx + len(ls)
+		n += idx + len(fieldLineDelimiter)
 	}
 
-	return n, true, nil
+	return ei + len(headersDelimiter), true, nil
 }

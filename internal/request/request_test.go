@@ -4,6 +4,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/phungducminh/httpfromtcp/internal/headers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,4 +79,62 @@ func TestRequestLineParse(t *testing.T) {
 	_, err = RequestFromReader(newChunkReader([]byte("/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"), 10))
 	require.Error(t, err)
 	assert.Equal(t, err, ErrMalformedRequestLine)
+}
+
+func TestRequestFromReaderParseHeaders(t *testing.T) {
+	// Test: Standard Headers
+	tests := []struct {
+		data            string
+		numBytesPerRead int
+		expectHeaders   map[string]string
+		expectErr       error
+	}{
+		{
+			data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+			numBytesPerRead: 100,
+			expectHeaders:   map[string]string{"host": "localhost:42069", "user-agent": "curl/7.81.0", "accept": "*/*"},
+			expectErr:       nil,
+		},
+		{
+			data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+			numBytesPerRead: 3,
+			expectHeaders:   map[string]string{"host": "localhost:42069", "user-agent": "curl/7.81.0", "accept": "*/*"},
+			expectErr:       nil,
+		},
+		{
+			data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nBar: abc\r\nbar:xyz\r\n\r\n",
+			numBytesPerRead: 3,
+			expectHeaders:   map[string]string{"host": "localhost:42069", "bar": "abc, xyz"},
+			expectErr:       nil,
+		},
+		{
+			data:            "GET / HTTP/1.1\r\n\r\n",
+			numBytesPerRead: 3,
+			expectHeaders:   map[string]string{},
+			expectErr:       nil,
+		},
+		{
+			data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+			numBytesPerRead: 3,
+			expectHeaders:   map[string]string{},
+			expectErr:       headers.ErrMalformedHeaders,
+		},
+	}
+
+	for _, tt := range tests {
+		reader := newChunkReader([]byte(tt.data), tt.numBytesPerRead)
+		req, err := RequestFromReader(reader)
+		if tt.expectErr != nil && tt.expectErr != err {
+			t.Errorf("data='%s', numBytesPerRead=%d, expect error=%v, actual=%v", tt.data, tt.numBytesPerRead, tt.expectErr, err)
+		}
+		if tt.expectErr == nil {
+			require.NotNil(t, req, tt.data)
+			for k, v := range tt.expectHeaders {
+				actual := req.Headers.Get(k)
+				if v != actual {
+					t.Errorf("data='%s', numBytesPerRead=%d, key=%s, expect value=%s, actual value=%s", tt.data, tt.numBytesPerRead, k, v, actual)
+				}
+			}
+		}
+	}
 }

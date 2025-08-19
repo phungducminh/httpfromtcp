@@ -16,7 +16,7 @@ func TestHeadersParse(t *testing.T) {
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers.Get("Host"))
 	assert.Equal(t, "application/json", headers.Get("Content-Type"))
-	assert.Equal(t, 55, n)
+	assert.Equal(t, 57, n)
 	assert.True(t, done)
 
 	// Test: Valid spacing header
@@ -50,6 +50,22 @@ func TestHeadersParse(t *testing.T) {
 	data = []byte("       Host : localhost:42069       \r\n\r\n")
 	n, done, err = headers.Parse(data)
 	require.Error(t, err)
+	assert.Equal(t, 0, n)
+	assert.False(t, done)
+
+	// Test: empty header
+	headers = NewHeaders()
+	data = []byte("\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	assert.NotNil(t, headers)
+	assert.Equal(t, 0, headers.Len())
+
+	// Test: missing end of header 
+	headers = NewHeaders()
+	data = []byte("Host : localhost:42069")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 	assert.False(t, done)
 }
