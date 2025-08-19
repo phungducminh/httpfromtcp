@@ -8,66 +8,80 @@ import (
 )
 
 func TestHeadersParse(t *testing.T) {
-	// Test: Valid single header
-	headers := NewHeaders()
-	data := []byte("Host: localhost:42069\r\nContent-Type: application/json\r\n\r\n")
-	n, done, err := headers.Parse(data)
-	require.NoError(t, err)
-	require.NotNil(t, headers)
-	assert.Equal(t, "localhost:42069", headers.Get("Host"))
-	assert.Equal(t, "application/json", headers.Get("Content-Type"))
-	assert.Equal(t, 57, n)
-	assert.True(t, done)
+	tests := []struct {
+		description   string
+		data          string
+		expectErr     error
+		expectHeaders map[string]string
+		expectReadLen int
+		expectDone    bool
+	}{
+		{
+			data:          "Host: localhost:42069\r\nContent-Type: application/json\r\n\r\n",
+			expectErr:     nil,
+			expectHeaders: map[string]string{"Host": "localhost:42069", "Content-Type": "application/json"},
+			expectReadLen: 57,
+			expectDone:    true,
+		},
+		{
+			description:   "spacing headers",
+			data:          "       Host: localhost:42069       \r\n\r\n",
+			expectErr:     nil,
+			expectHeaders: map[string]string{"Host": "localhost:42069"},
+			expectReadLen: 39,
+			expectDone:    true,
+		},
+		{
+			description:   "valid allowed characters",
+			data:          "H!1ost: localhost:42069\r\n\r\n",
+			expectErr:     nil,
+			expectHeaders: map[string]string{"h!1ost": "localhost:42069"},
+			expectReadLen: 27,
+			expectDone:    true,
+		},
+		{
+			data:          "H@1ost: localhost:42069\r\n\r\n",
+			expectErr:     ErrMalformedHeaders,
+			expectHeaders: map[string]string{},
+			expectReadLen: 0,
+			expectDone:    false,
+		},
+		{
+			description:   "invalid spacing header",
+			data:          "       Host : localhost:42069       \r\n\r\n",
+			expectErr:     ErrMalformedHeaders,
+			expectHeaders: map[string]string{},
+			expectReadLen: 0,
+			expectDone:    false,
+		},
+		{
+			description:   "empty headers",
+			data:          "\r\n",
+			expectErr:     nil,
+			expectHeaders: map[string]string{},
+			expectReadLen: 2,
+			expectDone:    true,
+		},
+		{
+			description:   "missing end of header",
+			data:          "Host : localhost:42069",
+			expectErr:     nil,
+			expectHeaders: map[string]string{},
+			expectReadLen: 0,
+			expectDone:    false,
+		},
+	}
 
-	// Test: Valid spacing header
-	headers = NewHeaders()
-	data = []byte("       Host: localhost:42069       \r\n\r\n")
-	n, done, err = headers.Parse(data)
-	require.NoError(t, err)
-	require.NotNil(t, headers)
-	assert.Equal(t, "localhost:42069", headers.Get("Host"))
-	assert.True(t, done)
-
-	// Test: header key characters
-	headers = NewHeaders()
-	data = []byte("       H!1ost: localhost:42069       \r\n\r\n")
-	n, done, err = headers.Parse(data)
-	require.NoError(t, err)
-	require.NotNil(t, headers)
-	assert.Equal(t, "localhost:42069", headers.Get("h!1ost"))
-	assert.True(t, done)
-
-	// Test: header key contains invalid characters
-	headers = NewHeaders()
-	data = []byte("       H@1ost: localhost:42069       \r\n\r\n")
-	n, done, err = headers.Parse(data)
-	require.Error(t, err)
-	assert.Equal(t, 0, n)
-	assert.False(t, done)
-
-	// Test: Invalid spacing header
-	headers = NewHeaders()
-	data = []byte("       Host : localhost:42069       \r\n\r\n")
-	n, done, err = headers.Parse(data)
-	require.Error(t, err)
-	assert.Equal(t, 0, n)
-	assert.False(t, done)
-
-	// Test: empty header
-	headers = NewHeaders()
-	data = []byte("\r\n\r\n")
-	n, done, err = headers.Parse(data)
-	require.NoError(t, err)
-	assert.NotNil(t, headers)
-	assert.Equal(t, 0, headers.Len())
-
-	// Test: missing end of header 
-	headers = NewHeaders()
-	data = []byte("Host : localhost:42069")
-	n, done, err = headers.Parse(data)
-	require.NoError(t, err)
-	assert.Equal(t, 0, n)
-	assert.False(t, done)
+	for _, tt := range tests {
+		headers := NewHeaders()
+		readLen, done, err := headers.Parse([]byte(tt.data))
+		require.Equal(t, tt.expectErr, err)
+		for k, v := range tt.expectHeaders {
+			assert.Equal(t, v, headers.Get(k))
+		}
+		assert.Equal(t, tt.expectReadLen, readLen)
+		assert.Equal(t, tt.expectDone, done)
+	}
 }
 
 func TestHeadersParseMultipleValues(t *testing.T) {
