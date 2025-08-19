@@ -76,3 +76,5 @@
             return parse(p), nil
         }
         ``````
+
++ why headers.Parse()'s signature contains "done" flag?
