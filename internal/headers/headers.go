@@ -70,7 +70,13 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 		if !isToken(fieldName) {
 			return 0, false, fmt.Errorf("headers: malformed header name")
 		}
-		h.Set(fieldName, fieldValue)
+
+		val := h.Get(fieldName)
+		if val != "" {
+			h.Set(fieldName, val+", "+fieldValue)
+		} else {
+			h.Set(fieldName, fieldValue)
+		}
 
 		n += idx + len(ls)
 	}

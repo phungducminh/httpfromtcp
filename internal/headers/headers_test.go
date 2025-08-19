@@ -14,7 +14,7 @@ func TestHeadersParse(t *testing.T) {
 	n, done, err := headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
-	assert.Equal(t, "localhost:42069", headers.Get("Host")) 
+	assert.Equal(t, "localhost:42069", headers.Get("Host"))
 	assert.Equal(t, "application/json", headers.Get("Content-Type"))
 	assert.Equal(t, 55, n)
 	assert.True(t, done)
@@ -52,4 +52,15 @@ func TestHeadersParse(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, 0, n)
 	assert.False(t, done)
+}
+
+func TestHeadersParseMultipleValues(t *testing.T) {
+	headers := NewHeaders()
+	data := []byte("Host: localhost:42069\r\nSet-Person: lane-loves-go\r\nSet-Person: prime-loves-zig\r\nSet-Person: tj-loves-ocaml\r\n\r\n")
+	_, done, err := headers.Parse(data)
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "localhost:42069", headers.Get("Host"))
+	assert.Equal(t, "lane-loves-go, prime-loves-zig, tj-loves-ocaml", headers.Get("Set-Person"))
+	assert.True(t, done)
 }
