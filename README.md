@@ -78,3 +78,9 @@
         ``````
 
 + why headers.Parse()'s signature contains "done" flag?
+
++ multiple return statements in state machine loop or should just single?
++ Request Body is EOF, maybe chunkReader is not implement correctly or the 
+    ReadRequestFromReader need to handle EOF case correctly, read all byte 
+    before returning EOF error
++ TODO: refactor move request line logic out to other file

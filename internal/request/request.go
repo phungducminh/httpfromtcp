@@ -2,9 +2,11 @@ package request
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 
 	"github.com/phungducminh/httpfromtcp/internal/headers"
 )
@@ -12,9 +14,11 @@ import (
 var ls = []byte("\r\n")
 
 var (
-	ErrMalformedRequest        = fmt.Errorf("request: malformed request")
-	ErrMalformedRequestLine    = fmt.Errorf("request: malformed request line")
-	ErrMalformedRequestHeaders = fmt.Errorf("request: malformed request headers")
+	ErrMalformedRequest                     = fmt.Errorf("request: malformed request")
+	ErrMalformedRequestLine                 = fmt.Errorf("request: malformed request line")
+	ErrMalformedRequestHeaders              = fmt.Errorf("request: malformed request headers")
+	ErrMalformedRequestHeadersContentLength = fmt.Errorf("request: malformed request headers content-length")
+	ErrMalformedRequestBody                 = fmt.Errorf("request: malformed request body")
 )
 
 type RequestState string
@@ -25,12 +29,14 @@ const (
 	Done               RequestState = "Done"
 	ParsingRequestLine RequestState = "ParsingRequestLine"
 	ParsingHeaders     RequestState = "ParsingHeaders"
+	ParsingBody        RequestState = "ParsingBody"
 )
 
 type RequestLine struct {
 	HttpVersion   string
 	RequestTarget string
 	Method        string
+	Body          []byte
 }
 
 type Request struct {
@@ -38,29 +44,42 @@ type Request struct {
 	Headers     *headers.Headers
 	Body        []byte
 	state       RequestState
-	// readN       int
 }
 
 func newRequest() *Request {
 	return &Request{
-		state: Initialized,
+		state:   Initialized,
 		Headers: headers.NewHeaders(),
+		Body:    nil,
 	}
 }
 
+// TODO: @minh move the logic down
 // parse return number of bytes read and error
 // the number of bytes read will be used for moving buffer
-func (r *Request) parse(p []byte) (int, error) {
+func (r *Request) parse(p []byte, eof bool) (int, error) {
 	readN := 0
-outer:
 	for {
 		switch r.state {
 		case Done:
-			break outer
+			return readN, nil
 		case Error:
-			break outer
+			return readN, nil
 		case Initialized:
 			r.state = ParsingRequestLine
+		case ParsingRequestLine:
+			rl, n, err := parseRequestLine(p[readN:])
+			if err != nil {
+				r.state = Error
+				return readN, err
+			}
+			if rl == nil {
+				return readN, nil
+			}
+
+			r.RequestLine = *rl
+			r.state = ParsingHeaders
+			readN += n
 		case ParsingHeaders:
 			s := p[readN:]
 			n, done, err := r.Headers.Parse(s)
@@ -69,31 +88,28 @@ outer:
 				return readN, err
 			}
 			if !done {
-				break outer
+				return readN, nil
 			}
 
-			r.state = Done
-			readN += n			
-			break outer
-		case ParsingRequestLine:
-			rl, n, err := parseRequestLine(p)
+			r.state = ParsingBody
+			readN += n
+		case ParsingBody:
+			body, n, err := r.parseRequestBody(p[readN:], eof)
 			if err != nil {
 				r.state = Error
-				return 0, err
+				return readN, err
 			}
-			if rl == nil {
-				break outer
+			if body == nil {
+				return readN, nil
 			}
 
-			r.RequestLine = *rl
-			r.state = ParsingHeaders
+			r.Body = body
+			r.state = Done
 			readN += n
 		default:
 			panic(fmt.Sprintf("unexpected request.RequestState: %#v", r.state))
 		}
 	}
-
-	return readN, nil
 }
 
 func (r *Request) done() bool {
@@ -108,15 +124,19 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	// buf[:end] denote the available buffer to be parsed by request
 	for !req.done() {
+		eof := false
 		// read a chunk
 		n, err := reader.Read(buf[end:])
-		// TODO: io.EOF??
 		if err != nil {
-			return nil, err
+			if errors.Is(err, io.EOF) {
+				eof = true
+			} else {
+				return nil, err
+			}
 		}
 
 		end += n
-		readN, err := req.parse(buf[:end])
+		readN, err := req.parse(buf[:end], eof)
 		if err != nil {
 			return nil, err
 		}
@@ -167,4 +187,32 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 		Method:        string(method),
 	}
 	return rl, len(data) + len(ls), nil
+}
+
+func (r *Request) parseRequestBody(data []byte, eof bool) ([]byte, int, error) {
+	cl := r.Headers.Get("content-length")
+	if cl == "" {
+		return []byte{}, 0, nil
+	}
+
+	length, err := strconv.ParseInt(cl, 10, 32)
+	if err != nil || length < 0 {
+		return nil, 0, ErrMalformedRequestHeaders
+	}
+
+	if eof && len(data) != int(length) {
+		return nil, 0, ErrMalformedRequestBody
+	}
+
+	if len(data) < int(length) {
+		// not enough data for request body
+		return nil, 0, nil
+	}
+
+	if len(data) > int(length) {
+		// mismatch content-length value and body length
+		return nil, 0, ErrMalformedRequestBody
+	}
+
+	return data, len(data), nil
 }

@@ -19,7 +19,7 @@ func newChunkReader(data []byte, numBytesPerRead int) *chunkReader {
 	return &chunkReader{
 		data:            data,
 		numBytesPerRead: numBytesPerRead,
-		pos:             0,
+		pos:             0, // last read position
 	}
 }
 
@@ -135,6 +135,81 @@ func TestRequestFromReaderParseHeaders(t *testing.T) {
 					t.Errorf("data='%s', numBytesPerRead=%d, key=%s, expect value=%s, actual value=%s", tt.data, tt.numBytesPerRead, k, v, actual)
 				}
 			}
+		}
+	}
+}
+
+func TestRequestFromReaderParseBody(t *testing.T) {
+	tests := []struct {
+		description     string
+		data            string
+		numBytesPerRead int
+		expecteError    error
+		expectBody      string
+	}{
+		{
+			description: "happy case",
+			data: "POST /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"Content-Length: 13\r\n" +
+				"\r\n" +
+				"hello world!\n",
+			numBytesPerRead: 3,
+			expecteError:    nil,
+			expectBody:      "hello world!\n",
+		},
+		{
+			description: "content-length header's value and body length mismatch",
+			data: "POST /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"Content-Length: 20\r\n" +
+				"\r\n" +
+				"partial content",
+			numBytesPerRead: 3,
+			expecteError:    ErrMalformedRequestBody,
+			expectBody:      "",
+		},
+		{
+			description: "content-length header's value is 0 and empty body",
+			data: "POST /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"Content-Length: 0\r\n" +
+				"\r\n",
+			numBytesPerRead: 3,
+			expecteError:    nil,
+			expectBody:      "",
+		},
+		{
+			description: "no content-length header and empty body",
+			data: "POST /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"\r\n",
+			numBytesPerRead: 3,
+			expecteError:    nil,
+			expectBody:      "",
+		},
+		{
+			description: "no content-length header and body exist",
+			data: "POST /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"\r\n" +
+				"hello world!\n",
+			numBytesPerRead: 3,
+			expecteError:    nil,
+			expectBody:      "",
+		},
+	}
+
+	for _, tt := range tests {
+		reader := newChunkReader([]byte(tt.data), tt.numBytesPerRead)
+		r, err := RequestFromReader(reader)
+		if tt.expecteError != nil {
+			require.Error(t, err, tt.description)
+			assert.Equal(t, tt.expecteError, err, tt.description)
+		} else {
+			require.NotNil(t, r, tt.description)
+			require.NotNil(t, r.Body, tt.description)
+			assert.Equal(t, tt.expectBody, string(r.Body), tt.description)
 		}
 	}
 }
