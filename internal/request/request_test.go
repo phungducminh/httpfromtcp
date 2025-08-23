@@ -12,30 +12,26 @@ import (
 type chunkReader struct {
 	data            []byte
 	numBytesPerRead int
-	pos             int
+	end             int
 }
 
 func newChunkReader(data []byte, numBytesPerRead int) *chunkReader {
 	return &chunkReader{
 		data:            data,
 		numBytesPerRead: numBytesPerRead,
-		pos:             0, // last read position
+		end:             0, // last read position
 	}
 }
 
 // Read reads up to len(p) or numBytesPerRead bytes from the string per call
 // its useful for simulating reading a variable number of bytes per chunk from a network connection
 func (cr *chunkReader) Read(p []byte) (n int, err error) {
-	if cr.pos >= len(cr.data) {
+	if cr.end >= len(cr.data) {
 		return 0, io.EOF
 	}
-	endIndex := min(cr.pos+cr.numBytesPerRead, len(cr.data))
-	n = copy(p, cr.data[cr.pos:endIndex])
-	cr.pos += n
-	if n > cr.numBytesPerRead {
-		n = cr.numBytesPerRead
-		cr.pos -= n - cr.numBytesPerRead
-	}
+	nexti := min(cr.end+cr.numBytesPerRead, len(cr.data))
+	n = copy(p, cr.data[cr.end:nexti])
+	cr.end += n
 	return n, nil
 }
 
@@ -122,8 +118,8 @@ func TestRequestFromReaderParseHeaders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		reader := newChunkReader([]byte(tt.data), tt.numBytesPerRead)
-		req, err := RequestFromReader(reader)
+		r := newChunkReader([]byte(tt.data), tt.numBytesPerRead)
+		req, err := RequestFromReader(r)
 		if tt.expectErr != nil && tt.expectErr != err {
 			t.Errorf("data='%s', numBytesPerRead=%d, expect error=%v, actual=%v", tt.data, tt.numBytesPerRead, tt.expectErr, err)
 		}

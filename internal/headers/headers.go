@@ -58,39 +58,40 @@ func isToken(key string) bool {
 	return true
 }
 
-func (h Headers) Parse(data []byte) (int, bool, error) {
+func Parse(data []byte) (*Headers, int, error) {
+	h := NewHeaders()
 	// no header case
 	if bytes.Index(data, fieldLineDelimiter) == 0 {
-		return len(fieldLineDelimiter), true, nil
+		return h, len(fieldLineDelimiter), nil
 	}
 
-	ei := bytes.Index(data, headersDelimiter)
-	if ei == -1 {
-		return 0, false, nil
+	endi := bytes.Index(data, headersDelimiter)
+	if endi == -1 {
+		return nil, 0, nil
 	}
 	n := 0
 	for {
-		idx := bytes.Index(data[n:], fieldLineDelimiter)
-		if idx == -1 {
-			return 0, false, nil
+		linei := bytes.Index(data[n:], fieldLineDelimiter)
+		if linei == -1 {
+			return nil, 0, nil
 		}
 
-		if idx == 0 {
+		if linei == 0 {
 			// end of headers
 			break
 		}
 
 		// idx: the index starting from n -> need to take slice [n:n+idx]
-		buf := data[n : n+idx]
-		colonIdx := bytes.Index(buf, []byte(":"))
-		if colonIdx == -1 || (len(buf) >= colonIdx && buf[colonIdx-1] == ' ') {
-			return 0, false, ErrMalformedHeaders
+		buf := data[n : n+linei]
+		coloni := bytes.Index(buf, []byte(":"))
+		if coloni == -1 || (len(buf) >= coloni && buf[coloni-1] == ' ') {
+			return nil, 0, ErrMalformedHeaders
 		}
 
-		fieldName := strings.TrimSpace(string(buf[:colonIdx]))
-		fieldValue := strings.TrimSpace(string(buf[colonIdx+1:]))
+		fieldName := strings.TrimSpace(string(buf[:coloni]))
+		fieldValue := strings.TrimSpace(string(buf[coloni+1:]))
 		if !isToken(fieldName) {
-			return 0, false, ErrMalformedHeaders
+			return nil, 0, ErrMalformedHeaders
 		}
 
 		val := h.Get(fieldName)
@@ -100,8 +101,8 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			h.Set(fieldName, fieldValue)
 		}
 
-		n += idx + len(fieldLineDelimiter)
+		n += linei + len(fieldLineDelimiter)
 	}
 
-	return ei + len(headersDelimiter), true, nil
+	return h, endi + len(headersDelimiter), nil
 }
