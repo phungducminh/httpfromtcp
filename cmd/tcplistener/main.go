@@ -33,13 +33,16 @@ func handleConnect(conn net.Conn) {
 		panic(err)
 	}
 
-	fmt.Printf(`Request line:
-- Method: %s
-- Target: %s
-- Version: %s`, req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+	fmt.Printf("Request line:\n")
+	fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+	fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+	fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
 
-	fmt.Printf("\nHeaders:\n")
+	fmt.Printf("Headers:\n")
 	req.Headers.ForEach(func(key, value string) {
 		fmt.Printf("- %s: %s\n", key, value)
 	})
+
+	fmt.Printf("Body:\n")
+	fmt.Printf("%s\n", string(req.Body))
 }
