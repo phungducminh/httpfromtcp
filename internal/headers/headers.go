@@ -12,25 +12,31 @@ var headersDelimiter = []byte("\r\n\r\n")
 var ErrMalformedHeaders = fmt.Errorf("headers: malformed headers")
 
 type Headers struct {
-	m map[string]string
+	kv map[string]string
 }
 
 func NewHeaders() *Headers {
 	return &Headers{
-		m: make(map[string]string),
+		kv: make(map[string]string),
 	}
 }
 
 func (h *Headers) Get(key string) string {
-	return h.m[strings.ToLower(key)]
+	return h.kv[strings.ToLower(key)]
 }
 
 func (h *Headers) Set(key, value string) {
-	h.m[strings.ToLower(key)] = value
+	h.kv[strings.ToLower(key)] = value
 }
 
 func (h *Headers) Len() int {
-	return len(h.m)
+	return len(h.kv)
+}
+
+func (h *Headers) ForEach(fn func(string, string)) {
+	for k, v := range h.kv {
+		fn(k, v)
+	}
 }
 
 func isToken(key string) bool {

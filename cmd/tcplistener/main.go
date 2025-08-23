@@ -37,4 +37,9 @@ func handleConnect(conn net.Conn) {
 - Method: %s
 - Target: %s
 - Version: %s`, req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
+
+	fmt.Printf("\nHeaders:\n")
+	req.Headers.ForEach(func(key, value string) {
+		fmt.Printf("- %s: %s\n", key, value)
+	})
 }
