@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -12,6 +14,7 @@ import (
 )
 
 type Server struct {
+	h        Handler
 	listener net.Listener
 
 	mu          sync.RWMutex
@@ -22,7 +25,7 @@ type Server struct {
 
 // Serve create a net.Listener and returns a new Server instance. It also start
 // listening for requests in a goroutine
-func Serve(port int) (*Server, error) {
+func Serve(port int, h Handler) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
@@ -32,6 +35,7 @@ func Serve(port int) (*Server, error) {
 		listener:    listener,
 		connections: map[net.Conn]struct{}{},
 		closed:      atomic.Bool{},
+		h:           h,
 	}
 	go s.listen()
 	return s, nil
@@ -77,28 +81,32 @@ func (s *Server) handle(conn net.Conn) {
 	if err != nil {
 		slog.Error("failed to write to connection", slog.Any("err", err))
 	}
-	fmt.Printf("Request line:\n")
-	fmt.Printf("- Method: %s\n", req.RequestLine.Method)
-	fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
-	fmt.Printf("- Version: %s\n", req.RequestLine.HttpVersion)
 
-	fmt.Printf("Headers:\n")
-	req.Headers.ForEach(func(key, value string) {
-		fmt.Printf("- %s: %s\n", key, value)
-	})
+	b := &bytes.Buffer{}
+	hErr := s.h(b, req)
+	if hErr != nil {
+		HandleError(conn, hErr)
+		return
+	}
 
-	fmt.Printf("Body:\n")
-	fmt.Printf("%s\n", string(req.Body))
-
-	body := "Hello World!"
 	response.WriteStatusLine(conn, response.OK)
-	response.WriteHeaders(conn, response.GetDefaultHeaders(len(body)))
-	err = response.WriteBody(conn, body)
+	response.WriteHeaders(conn, response.GetDefaultHeaders(b.Len()))
+	err = response.WriteBody(conn, b.Bytes())
 	if err != nil {
 		if !s.closed.Load() {
 			slog.Error("failed to write to connection", slog.Any("err", err))
 		} else {
 			slog.Info("failed to write to connection as server has already been closed")
 		}
+	}
+}
+
+func HandleError(w io.Writer, hErr *HandlerError) {
+	message := hErr.Message
+	response.WriteStatusLine(w, hErr.StatusCode)
+	response.WriteHeaders(w, response.GetDefaultHeaders(len(message)))
+	err := response.WriteBody(w, []byte(message))
+	if err != nil {
+		slog.Error("failed to write to connection", slog.Any("err", err))
 	}
 }

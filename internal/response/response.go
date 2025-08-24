@@ -52,7 +52,11 @@ func WriteHeaders(w io.Writer, h *headers.Headers) error {
 	return err
 }
 
-func WriteBody(w io.Writer, body string) error {
-	_, err := w.Write([]byte("\r\n" + body))
+func WriteBody(w io.Writer, body []byte) error {
+	_, err := w.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(body)
 	return err
 }
