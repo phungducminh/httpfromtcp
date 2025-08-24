@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"log/slog"
 	"net"
@@ -9,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/phungducminh/httpfromtcp/internal/request"
+	"github.com/phungducminh/httpfromtcp/internal/response"
 )
 
 type Server struct {
@@ -75,7 +75,7 @@ func (s *Server) handle(conn net.Conn) {
 
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		panic(err)
+		slog.Error("failed to write to connection", slog.Any("err", err))
 	}
 	fmt.Printf("Request line:\n")
 	fmt.Printf("- Method: %s\n", req.RequestLine.Method)
@@ -89,16 +89,11 @@ func (s *Server) handle(conn net.Conn) {
 
 	fmt.Printf("Body:\n")
 	fmt.Printf("%s\n", string(req.Body))
-	// TODO: @minh reclaim non-used allocated memory
-	b := bytes.Buffer{}
-	b.WriteString("HTTP/1.1 200 OK\r\n")
-	b.WriteString("Content-Type: text/plain\r\n")
-	b.WriteString("Content-Length: 12\r\n")
-	b.WriteString("\r\n")
-	b.WriteString("Hello World!")
-	slog.Info("send response", slog.String("message", b.String()))
 
-	_, err = conn.Write(b.Bytes())
+	body := "Hello World!"
+	response.WriteStatusLine(conn, response.OK)
+	response.WriteHeaders(conn, response.GetDefaultHeaders(len(body)))
+	err = response.WriteBody(conn, body)
 	if err != nil {
 		if !s.closed.Load() {
 			slog.Error("failed to write to connection", slog.Any("err", err))
