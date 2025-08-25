@@ -22,6 +22,23 @@ func NewHandlerError(statusCode response.StatusCode, message string) *HandlerErr
 	}
 }
 
-func (e *HandlerError) Error() string {
-	return fmt.Sprintf("status code: %d, message = %s", e.StatusCode, e.Message)
+func (h *HandlerError) Error() string {
+	return fmt.Sprintf("status code: %d, message = %s", h.StatusCode, h.Message)
+}
+
+func (h *HandlerError) WriteTo(w io.Writer) (int64, error) {
+	sln, err := response.WriteStatusLine(w, h.StatusCode)
+	if err != nil {
+		return 0, err
+	}
+	hn, err := response.WriteHeaders(w, response.GetDefaultHeaders(len(h.Message)))
+	if err != nil {
+		return int64(sln), err
+	}
+	bn, err := response.WriteBody(w, []byte(h.Message))
+	if err != nil {
+		return int64(sln + hn), err
+	}
+
+	return int64(sln + hn + bn), nil
 }

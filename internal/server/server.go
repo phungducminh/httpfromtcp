@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -79,33 +78,56 @@ func (s *Server) handle(conn net.Conn) {
 
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		slog.Error("failed to write to connection", slog.Any("err", err))
+		handler := NewHandlerError(response.BadRequest, err.Error())
+		if s.closed.Load() {
+			slog.Info("server has already been closed")
+			return
+		}
+		_, err := handler.WriteTo(conn)
+		if err != nil {
+			slog.Error("failed to write to connection", slog.Any("err", err))
+		}
+		return
 	}
 
 	b := &bytes.Buffer{}
 	hErr := s.h(b, req)
 	if hErr != nil {
-		HandleError(conn, hErr)
+		if s.closed.Load() {
+			slog.Info("server has already been closed")
+			return
+		}
+		_, err := hErr.WriteTo(conn)
+		if err != nil {
+			slog.Error("failed to write to connection", slog.Any("err", err))
+		}
 		return
 	}
 
-	response.WriteStatusLine(conn, response.OK)
-	response.WriteHeaders(conn, response.GetDefaultHeaders(b.Len()))
-	err = response.WriteBody(conn, b.Bytes())
-	if err != nil {
-		if !s.closed.Load() {
-			slog.Error("failed to write to connection", slog.Any("err", err))
-		} else {
-			slog.Info("failed to write to connection as server has already been closed")
-		}
+	_, wslerr := response.WriteStatusLine(conn, response.OK)
+	if wslerr != nil {
+		s.handleInternalServerError(conn, wslerr)
+		return
+	}
+	_, wherr := response.WriteHeaders(conn, response.GetDefaultHeaders(b.Len()))
+	if wherr != nil {
+		s.handleInternalServerError(conn, wherr)
+		return
+	}
+	_, werr := response.WriteBody(conn, b.Bytes())
+	if werr != nil {
+		s.handleInternalServerError(conn, werr)
+		return
 	}
 }
 
-func HandleError(w io.Writer, hErr *HandlerError) {
-	message := hErr.Message
-	response.WriteStatusLine(w, hErr.StatusCode)
-	response.WriteHeaders(w, response.GetDefaultHeaders(len(message)))
-	err := response.WriteBody(w, []byte(message))
+func (s *Server) handleInternalServerError(conn net.Conn, err error) {
+	if s.closed.Load() {
+		slog.Info("server has already been closed")
+		return
+	}
+	handler := NewHandlerError(response.InternalServerError, err.Error())
+	_, err = handler.WriteTo(conn)
 	if err != nil {
 		slog.Error("failed to write to connection", slog.Any("err", err))
 	}

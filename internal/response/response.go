@@ -15,20 +15,21 @@ const (
 	InternalServerError StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func WriteStatusLine(w io.Writer, statusCode StatusCode) (int, error) {
 	var err error
+	var n int
 	switch statusCode {
 	case OK:
-		_, err = w.Write([]byte("HTTP/1.1 200 OK\r\n"))
+		n, err = w.Write([]byte("HTTP/1.1 200 OK\r\n"))
 	case BadRequest:
-		_, err = w.Write([]byte("HTTP/1.1 400 Bad Request\r\n"))
+		n, err = w.Write([]byte("HTTP/1.1 400 Bad Request\r\n"))
 	case InternalServerError:
-		_, err = w.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n"))
+		n, err = w.Write([]byte("HTTP/1.1 500 Internal Server Error\r\n"))
 	default:
-		_, err = w.Write([]byte(fmt.Sprintf("HTTP/1.1 %d \r\n", statusCode)))
+		n, err = w.Write([]byte(fmt.Sprintf("HTTP/1.1 %d \r\n", statusCode)))
 	}
 
-	return err
+	return n, err
 }
 
 func GetDefaultHeaders(contentLength int) *headers.Headers {
@@ -39,24 +40,29 @@ func GetDefaultHeaders(contentLength int) *headers.Headers {
 	return h
 }
 
-func WriteHeaders(w io.Writer, h *headers.Headers) error {
+func WriteHeaders(w io.Writer, h *headers.Headers) (int, error) {
 	var err error
+	var n int
 	h.ForEach(func(key string, value string) {
-		_, werr := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
+		wn, werr := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
+		n += wn
 		// only write the 1st error
 		if err == nil {
 			err = werr
 		}
 	})
 
-	return err
+	return n, err
 }
 
-func WriteBody(w io.Writer, body []byte) error {
-	_, err := w.Write([]byte("\r\n"))
+func WriteBody(w io.Writer, body []byte) (int, error) {
+	crn, err := w.Write([]byte("\r\n"))
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = w.Write(body)
-	return err
+	bn, err := w.Write(body)
+	if err != nil {
+		return crn, err
+	}
+	return crn + bn, nil
 }
