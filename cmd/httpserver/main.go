@@ -89,53 +89,7 @@ func main() {
 			body = respond500()
 			status = 500
 		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
-			suffix := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
-			res, err := http.Get("https://httpbin.org/" + suffix)
-			if err != nil {
-				w.WriteInternalServerError(err, h)
-				return
-			}
-
-			w.WriteStatusLine(response.OK)
-			h.Set("Transfer-Encoding", "chunked")
-			h.Set("Trailer", "X-Content-SHA256")
-			h.Set("Trailer", "X-Content-Length")
-			h.Delete("Content-Length")
-			w.WriteHeaders(h)
-
-			hash256 := sha256.New()
-			size := 0
-			p := make([]byte, 32)
-			for {
-				eof := false
-				n, err := res.Body.Read(p)
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						eof = true
-					} else {
-						slog.Error("failed to read request body", slog.Any("error", err))
-						// maybe return will close connection
-						return
-					}
-				}
-				if n == 0 {
-					break
-				}
-
-				slog.Debug("write chunk body", slog.String("data", string(p[:n])))
-				n, _ = hash256.Write(p[:n])
-				size += n
-				w.WriteChunkedBody(p[:n])
-				if eof {
-					break
-				}
-			}
-			slog.Debug("write chunk body done")
-			w.Write([]byte("0\r\n"))
-			trailers := headers.NewHeaders()
-			trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", string(hash256.Sum(nil))))
-			trailers.Set("X-Content-Length", fmt.Sprintf("%d", size))
-			w.WriteTrailers(trailers)
+			handleHttpBinRequest(req, w)
 			return
 		}
 		h.Replace("Content-Length", fmt.Sprintf("%d", len(body)))
@@ -154,4 +108,56 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	log.Println("Server gracefully stopped")
+}
+
+func handleHttpBinRequest(req *request.Request, w *response.Writer){
+	h := headers.NewHeaders()
+	h.Replace("Content-Type", "text/html")
+	suffix := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+	res, err := http.Get("https://httpbin.org/" + suffix)
+	if err != nil {
+		w.WriteInternalServerError(err, h)
+		return 
+	}
+
+	w.WriteStatusLine(response.OK)
+	h.Set("Transfer-Encoding", "chunked")
+	h.Set("Trailer", "X-Content-SHA256")
+	h.Set("Trailer", "X-Content-Length")
+	h.Delete("Content-Length")
+	w.WriteHeaders(h)
+
+	hash256 := sha256.New()
+	size := 0
+	p := make([]byte, 32)
+	for {
+		eof := false
+		n, err := res.Body.Read(p)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				eof = true
+			} else {
+				slog.Error("failed to read request body", slog.Any("error", err))
+				// maybe return will close connection
+				return
+			}
+		}
+		if n == 0 {
+			break
+		}
+
+		slog.Debug("write chunk body", slog.String("data", string(p[:n])))
+		n, _ = hash256.Write(p[:n])
+		size += n
+		w.WriteChunkedBody(p[:n])
+		if eof {
+			break
+		}
+	}
+	slog.Debug("write chunk body done")
+	w.Write([]byte("0\r\n"))
+	trailers := headers.NewHeaders()
+	trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", string(hash256.Sum(nil))))
+	trailers.Set("X-Content-Length", fmt.Sprintf("%d", size))
+	w.WriteTrailers(trailers)
 }
