@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -57,6 +58,7 @@ func respond500() string {
 </html>`
 }
 
+
 func main() {
 	logLvl := flag.String("log-level", "INFO", "log level")
 
@@ -96,8 +98,13 @@ func main() {
 
 			w.WriteStatusLine(response.OK)
 			h.Set("Transfer-Encoding", "chunked")
+			h.Set("Trailer", "X-Content-SHA256")
+			h.Set("Trailer", "X-Content-Length")
 			h.Delete("Content-Length")
 			w.WriteHeaders(h)
+
+			hash256 := sha256.New()
+			size := 0
 			p := make([]byte, 32)
 			for {
 				eof := false
@@ -116,13 +123,19 @@ func main() {
 				}
 
 				slog.Debug("write chunk body", slog.String("data", string(p[:n])))
+				n, _ = hash256.Write(p[:n])
+				size += n
 				w.WriteChunkedBody(p[:n])
 				if eof {
 					break
 				}
 			}
 			slog.Debug("write chunk body done")
-			w.WriteChunkedBodyDone()
+			w.Write([]byte("0\r\n"))
+			trailers := headers.NewHeaders()
+			trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", string(hash256.Sum(nil))))
+			trailers.Set("X-Content-Length", fmt.Sprintf("%d", size))
+			w.WriteTrailers(trailers)
 			return
 		}
 		h.Replace("Content-Length", fmt.Sprintf("%d", len(body)))

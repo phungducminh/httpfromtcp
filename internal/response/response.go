@@ -3,6 +3,7 @@ package response
 import (
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/phungducminh/httpfromtcp/internal/headers"
 )
@@ -50,7 +51,9 @@ func (w *Writer) WriteHeaders(h *headers.Headers) (int, error) {
 	var err error
 	var n int
 	h.ForEach(func(key string, value string) {
-		wn, werr := w.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
+		headerstr := fmt.Sprintf("%s: %s\r\n", key, value)
+		wn, werr := w.Write([]byte(headerstr))
+		slog.Debug("Header", slog.String("header", headerstr))
 		n += wn
 		// only write the 1st error
 		if err == nil {
@@ -58,7 +61,12 @@ func (w *Writer) WriteHeaders(h *headers.Headers) (int, error) {
 		}
 	})
 
-	return n, err
+	rn, rerr := w.Write([]byte("\r\n"))
+	if err != nil {
+		err = rerr
+	}
+
+	return n + rn, err
 }
 
 func (w *Writer) WriteBody(body []byte) (int, error) {
@@ -100,15 +108,6 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 	return n1 + n2 + n3, err
 }
 
-func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	n, err := w.wr.Write([]byte("0\r\n\r\n"))
-	if err != nil {
-		return 0, err
-	}
-
-	return n, err
-}
-
 func (w *Writer) WriteInternalServerError(err error, h *headers.Headers) {
 	body := err.Error()
 	h.Delete("Transfer-Encoding")
@@ -116,4 +115,8 @@ func (w *Writer) WriteInternalServerError(err error, h *headers.Headers) {
 	w.WriteStatusLine(InternalServerError)
 	w.WriteHeaders(h)
 	w.WriteBody([]byte(body))
+}
+
+func (w *Writer) WriteTrailers(h *headers.Headers) (int, error) {
+	return w.WriteHeaders(h)
 }

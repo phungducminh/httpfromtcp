@@ -108,3 +108,7 @@
     ``````
     echo -e "GET /httpbin/stream/5 HTTP/1.1\r\nHost: localhost:42069\r\nConnection: close\r\n\r\n" | nc localhost 42069
     ``````
+
++ /httpbin/html
+    + 3f324f9914742e62cf082861ba03b207282dba781c3349bee9d7c1b5ef8e0bfe
+    + 3741
