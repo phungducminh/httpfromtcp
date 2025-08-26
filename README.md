@@ -100,8 +100,11 @@
     type Handler func(w *response.Writer, req *request.Request)
     ``````
     will result into more flexible function signature for custom handlers?
+    + allow client to modify headers, status code, ..., client will decide what 
+        the response will be 
 
-    + allow client to modify headers, status code, ...
 
-+ what response.Writer do?
-    + modify headers, status code, and body of the response as they see fit
++ how to use netcat to send http request?
+    ``````
+    echo -e "GET /httpbin/stream/5 HTTP/1.1\r\nHost: localhost:42069\r\nConnection: close\r\n\r\n" | nc localhost 42069
+    ``````

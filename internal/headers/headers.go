@@ -38,6 +38,10 @@ func (h *Headers) Replace(key, value string) {
 	h.kv[strings.ToLower(key)] = value
 }
 
+func (h *Headers) Delete(key string) {
+	delete(h.kv, strings.ToLower(key))
+}
+
 func (h *Headers) Len() int {
 	return len(h.kv)
 }

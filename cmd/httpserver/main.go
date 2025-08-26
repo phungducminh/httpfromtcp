@@ -1,10 +1,16 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/phungducminh/httpfromtcp/internal/headers"
@@ -52,18 +58,72 @@ func respond500() string {
 }
 
 func main() {
+	logLvl := flag.String("log-level", "INFO", "log level")
+
+	flag.Parse()
+
+	switch *logLvl {
+	case "DEBUG":
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	case "INFO":
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	case "WARN":
+		slog.SetLogLoggerLevel(slog.LevelWarn)
+	case "ERROR":
+		slog.SetLogLoggerLevel(slog.LevelError)
+	default:
+		panic("log level must be either DEBUG, INFO, WARN, ERROR")
+	}
+
 	var h server.Handler = func(w *response.Writer, req *request.Request) {
 		h := headers.NewHeaders()
 		h.Replace("Content-Type", "text/html")
 		body := respond200()
 		status := 200
-		switch req.RequestLine.RequestTarget {
-		case "/yourproblem":
+		if strings.HasPrefix(req.RequestLine.RequestTarget, "/yourproblem") {
 			body = respond400()
 			status = 400
-		case "/myproblem":
+		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/myproblem") {
 			body = respond500()
 			status = 500
+		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+			suffix := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+			res, err := http.Get("https://httpbin.org/" + suffix)
+			if err != nil {
+				w.WriteInternalServerError(err, h)
+				return
+			}
+
+			w.WriteStatusLine(response.OK)
+			h.Set("Transfer-Encoding", "chunked")
+			h.Delete("Content-Length")
+			w.WriteHeaders(h)
+			p := make([]byte, 32)
+			for {
+				eof := false
+				n, err := res.Body.Read(p)
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						eof = true
+					} else {
+						slog.Error("failed to read request body", slog.Any("error", err))
+						// maybe return will close connection
+						return
+					}
+				}
+				if n == 0 {
+					break
+				}
+
+				slog.Debug("write chunk body", slog.String("data", string(p[:n])))
+				w.WriteChunkedBody(p[:n])
+				if eof {
+					break
+				}
+			}
+			slog.Debug("write chunk body done")
+			w.WriteChunkedBodyDone()
+			return
 		}
 		h.Replace("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteStatusLine(response.StatusCode(status))

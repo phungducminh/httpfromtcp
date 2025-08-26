@@ -80,3 +80,40 @@ func GetDefaultHeaders(contentLength int) *headers.Headers {
 	h.Set("Content-Type", "text/plain")
 	return h
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	n1, err := w.wr.Write([]byte(fmt.Sprintf("%x\r\n", len(p))))
+	if err != nil {
+		return 0, err
+	}
+
+	n2, err := w.wr.Write(p)
+	if err != nil {
+		return n1, err
+	}
+
+	n3, err := w.wr.Write([]byte("\r\n"))
+	if err != nil {
+		return n1 + n2, err
+	}
+
+	return n1 + n2 + n3, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	n, err := w.wr.Write([]byte("0\r\n\r\n"))
+	if err != nil {
+		return 0, err
+	}
+
+	return n, err
+}
+
+func (w *Writer) WriteInternalServerError(err error, h *headers.Headers) {
+	body := err.Error()
+	h.Delete("Transfer-Encoding")
+	h.Replace("Content-Length", fmt.Sprintf("%d", len(body)))
+	w.WriteStatusLine(InternalServerError)
+	w.WriteHeaders(h)
+	w.WriteBody([]byte(body))
+}
