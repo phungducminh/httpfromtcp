@@ -26,6 +26,15 @@ func (h *Headers) Get(key string) string {
 }
 
 func (h *Headers) Set(key, value string) {
+	oldValue := h.Get(key)
+	newValue := value
+	if oldValue != "" {
+		newValue = oldValue + ", " + value
+	}
+	h.kv[strings.ToLower(key)] = newValue
+}
+
+func (h *Headers) Replace(key, value string) {
 	h.kv[strings.ToLower(key)] = value
 }
 
@@ -58,15 +67,19 @@ func isToken(key string) bool {
 	return true
 }
 
-func Parse(data []byte) (*Headers, int, error) {
+func Parse(data []byte, eof bool) (*Headers, int, error) {
 	h := NewHeaders()
-	// no header case
 	if bytes.Index(data, fieldLineDelimiter) == 0 {
+		// the starting of headers is \r\r -> no header
 		return h, len(fieldLineDelimiter), nil
 	}
 
 	endi := bytes.Index(data, headersDelimiter)
 	if endi == -1 {
+		if eof {
+			// expect to have \r\n\r\n to mark the end of headers, but not exist
+			return nil, 0, ErrMalformedHeaders
+		}
 		return nil, 0, nil
 	}
 	n := 0
@@ -94,12 +107,7 @@ func Parse(data []byte) (*Headers, int, error) {
 			return nil, 0, ErrMalformedHeaders
 		}
 
-		val := h.Get(fieldName)
-		if val != "" {
-			h.Set(fieldName, val+", "+fieldValue)
-		} else {
-			h.Set(fieldName, fieldValue)
-		}
+		h.Set(fieldName, fieldValue)
 
 		n += linei + len(fieldLineDelimiter)
 	}

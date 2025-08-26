@@ -65,7 +65,7 @@ func TestHeadersParse(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		h, n, err := Parse([]byte(tt.data))
+		h, n, err := Parse([]byte(tt.data), false)
 		require.Equal(t, tt.expectErr, err)
 		for k, v := range tt.expectHeaders {
 			assert.Equal(t, v, h.Get(k))
@@ -79,7 +79,7 @@ func TestHeadersParse(t *testing.T) {
 
 func TestHeadersParseMultipleValues(t *testing.T) {
 	data := []byte("Host: localhost:42069\r\nSet-Person: lane-loves-go\r\nSet-Person: prime-loves-zig\r\nSet-Person: tj-loves-ocaml\r\n\r\n")
-	h, n, err := Parse(data)
+	h, n, err := Parse(data, false)
 	require.NoError(t, err)
 	require.NotNil(t, h)
 	assert.Equal(t, "localhost:42069", h.Get("Host"))

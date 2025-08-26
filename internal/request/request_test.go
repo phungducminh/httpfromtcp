@@ -115,6 +115,12 @@ func TestRequestFromReaderParseHeaders(t *testing.T) {
 			expectHeaders:   map[string]string{},
 			expectErr:       headers.ErrMalformedHeaders,
 		},
+		{
+			data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n",
+			numBytesPerRead: 3,
+			expectHeaders:   map[string]string{},
+			expectErr:       headers.ErrMalformedHeaders,
+		},
 	}
 
 	for _, tt := range tests {
@@ -192,6 +198,16 @@ func TestRequestFromReaderParseBody(t *testing.T) {
 				"hello world!\n",
 			numBytesPerRead: 3,
 			expecteError:    nil,
+			expectBody:      "",
+		},
+		{
+			description: "content-length greater and empty body, mismatch",
+			data: "GET /submit HTTP/1.1\r\n" +
+				"Host: localhost:42069\r\n" +
+				"Content-Length: 100\r\n" +
+				"\r\n",
+			numBytesPerRead: 3,
+			expecteError:    ErrMalformedRequestBody,
 			expectBody:      "",
 		},
 	}

@@ -83,3 +83,25 @@
                   CRLF
                   [ message-body ]
 ``````
+
++ Test body:
+    ``````
+    curl -X POST http://localhost:42069/coffee \
+    -H 'Content-Type: application/json' \
+    -d '{"type": "dark mode", "size": "medium"}'
+    ``````
+
++ why changing from 
+    ``````
+    type Handler func(w io.Writer, req *request.Request) *HandlerError"
+    ``````
+    to
+    ``````
+    type Handler func(w *response.Writer, req *request.Request)
+    ``````
+    will result into more flexible function signature for custom handlers?
+
+    + allow client to modify headers, status code, ...
+
++ what response.Writer do?
+    + modify headers, status code, and body of the response as they see fit

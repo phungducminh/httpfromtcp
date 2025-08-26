@@ -15,7 +15,21 @@ const (
 	InternalServerError StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) (int, error) {
+type Writer struct {
+	wr io.Writer
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{
+		wr: w,
+	}
+}
+
+func (w *Writer) Write(p []byte) (int, error) {
+	return w.wr.Write(p)
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) (int, error) {
 	var err error
 	var n int
 	switch statusCode {
@@ -32,15 +46,7 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) (int, error) {
 	return n, err
 }
 
-func GetDefaultHeaders(contentLength int) *headers.Headers {
-	h := headers.NewHeaders()
-	h.Set("Content-Length", fmt.Sprintf("%d", contentLength))
-	h.Set("Connection", "close")
-	h.Set("Content-Type", "text/plain")
-	return h
-}
-
-func WriteHeaders(w io.Writer, h *headers.Headers) (int, error) {
+func (w *Writer) WriteHeaders(h *headers.Headers) (int, error) {
 	var err error
 	var n int
 	h.ForEach(func(key string, value string) {
@@ -55,7 +61,7 @@ func WriteHeaders(w io.Writer, h *headers.Headers) (int, error) {
 	return n, err
 }
 
-func WriteBody(w io.Writer, body []byte) (int, error) {
+func (w *Writer) WriteBody(body []byte) (int, error) {
 	crn, err := w.Write([]byte("\r\n"))
 	if err != nil {
 		return 0, err
@@ -65,4 +71,12 @@ func WriteBody(w io.Writer, body []byte) (int, error) {
 		return crn, err
 	}
 	return crn + bn, nil
+}
+
+func GetDefaultHeaders(contentLength int) *headers.Headers {
+	h := headers.NewHeaders()
+	h.Set("Content-Length", fmt.Sprintf("%d", contentLength))
+	h.Set("Connection", "close")
+	h.Set("Content-Type", "text/plain")
+	return h
 }

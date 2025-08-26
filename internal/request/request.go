@@ -74,6 +74,12 @@ func RequestFromReader(r io.Reader) (*Request, error) {
 		// shift available buffer to left
 		copy(b, b[pn:end])
 		end -= pn
+
+		if eof && !req.done() {
+			// EOF but parsing is not yet completed, there must be parsing 
+			// implementation error
+			return nil, fmt.Errorf("request: expect parsing completed after received EOF")
+		}
 	}
 
 	return req, nil
@@ -111,7 +117,7 @@ func (r *Request) parse(p []byte, eof bool) (int, error) {
 			r.state = ParsingHeaders
 			rn += n
 		case ParsingHeaders:
-			h, n, err := headers.Parse(p[rn:])
+			h, n, err := headers.Parse(p[rn:], eof)
 			if err != nil {
 				r.state = Error
 				return rn, err
