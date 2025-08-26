@@ -80,22 +80,30 @@ func main() {
 	var h server.Handler = func(w *response.Writer, req *request.Request) {
 		h := headers.NewHeaders()
 		h.Replace("Content-Type", "text/html")
-		body := respond200()
+		body := []byte(respond200())
 		status := 200
 		if strings.HasPrefix(req.RequestLine.RequestTarget, "/yourproblem") {
-			body = respond400()
+			body = []byte(respond400())
 			status = 400
 		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/myproblem") {
-			body = respond500()
+			body = []byte(respond500())
 			status = 500
 		} else if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
 			handleHttpBinRequest(req, w)
 			return
+		} else if req.RequestLine.RequestTarget == "/video" && req.RequestLine.Method == "GET" {
+			h.Replace("Content-Type", "video/mp4")
+			p, err := os.ReadFile("assets/vim.mp4")
+			if err != nil {
+				w.WriteInternalServerError(err, h)
+				return
+			}
+			body = p
 		}
 		h.Replace("Content-Length", fmt.Sprintf("%d", len(body)))
 		w.WriteStatusLine(response.StatusCode(status))
 		w.WriteHeaders(h)
-		w.WriteBody([]byte(body))
+		w.WriteBody(body)
 	}
 	server, err := server.Serve(port, h)
 	if err != nil {
